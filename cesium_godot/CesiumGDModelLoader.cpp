@@ -135,6 +135,14 @@ Ref<ArrayMesh> CesiumGDModelLoader::generate_meshes_from_model(const CesiumGltf:
 				}
 			}
 
+			// Cesium OSM Buildings may omit vertex normals because CesiumJS can
+			// derive them in its rendering pipeline. The Godot loader previously
+			// marked such surfaces unshaded, producing flat white silhouettes that
+			// ignored the sun. Generate smooth area-averaged normals instead.
+			if (normals.is_empty() && primitive.mode == CesiumGltf::MeshPrimitive::Mode::TRIANGLES) {
+				normals = generate_normals(vertices, indexBuffer);
+			}
+
 			// Required mesh data
 			Array arrays;
 			// We need to do some extra stuff if we're on the extension

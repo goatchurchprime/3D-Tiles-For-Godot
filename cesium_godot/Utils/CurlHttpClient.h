@@ -16,6 +16,7 @@
 #include "godot_cpp/core/error_macros.hpp"
 #include <godot_cpp/templates/vector.hpp>
 #include "godot_cpp/classes/http_client.hpp"
+#include "godot_cpp/classes/marshalls.hpp"
 using namespace godot;
 #elif defined(CESIUM_GD_MODULE)
 #include "core/templates/vector.h"
@@ -170,6 +171,22 @@ private:
 
 	PackedByteArray pull_url(const char *url, CURL *handle, long*outStatus , const std::vector<CesiumHeader_t> &headers) {
 		PackedByteArray buffer;
+		// Cesium responses use inline PNGs for attribution and may use them for
+		// other glTF images. libcurl is deliberately built without the data:
+		// protocol, so decode these locally instead of treating them as HTTP.
+		std::string urlString(url);
+		if (urlString.rfind("data:", 0) == 0) {
+			size_t base64Pos = urlString.find(";base64,");
+			if (base64Pos != std::string::npos) {
+				String encoded(urlString.substr(base64Pos + 8).c_str());
+				buffer = Marshalls::get_singleton()->base64_to_raw(encoded);
+				*outStatus = HTTPClient::RESPONSE_OK;
+				return buffer;
+			}
+			ERR_PRINT(String("Invalid data URI format"));
+			*outStatus = HTTPClient::RESPONSE_BAD_REQUEST;
+			return buffer;
+		}
 		//Options stuff
 		curl_easy_setopt(handle, CURLOPT_URL, url);
 		curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, &CurlHttpClient::write_callback);
