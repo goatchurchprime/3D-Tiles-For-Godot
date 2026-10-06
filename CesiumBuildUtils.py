@@ -270,6 +270,9 @@ def configure_native(argumentsDict):
 
 
 def determine_triplet():
+    triplet_override = os.environ.get("CESIUM_VCPKG_TRIPLET")
+    if triplet_override:
+        return triplet_override
     if os.name == OS_WIN:
         return "x64-windows-static"
     if sys.platform == PLATFORM_MACOS:

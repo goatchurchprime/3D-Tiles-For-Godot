@@ -355,28 +355,35 @@ elif sys.platform == cesium_build_utils.PLATFORM_MACOS:
 elif (os.name == cesium_build_utils.OS_LINUX and sys.platform != cesium_build_utils.PLATFORM_MACOS):
     libraries.extend([
         "crypto",
+        "z",
         "libz-ng",
         "liblibmodpbase64"
     ])
-    env.Append(LIBPATH=["/usr/lib/x86_64-linux-gnu"])
-    env.Append(CPPPATH=["/usr/include/x86_64-linux-gnu"])
+    if cesium_build_utils.determine_triplet() == "x64-linux":
+        env.Append(LIBPATH=["/usr/lib/x86_64-linux-gnu"])
+        env.Append(CPPPATH=["/usr/include/x86_64-linux-gnu"])
 
 # Build common library paths
+native_library_root = root_dir_native
+native_build_subdir = os.environ.get("CESIUM_NATIVE_BUILD_SUBDIR", "")
+if native_build_subdir:
+    native_library_root = os.path.join(root_dir_native, native_build_subdir)
+
 common_libpaths = [
-    f"{root_dir_native}/CesiumGltfReader/{current_build_config}",
-    f"{root_dir_native}/CesiumAsync/{current_build_config}",
-    f"{root_dir_native}/CesiumJsonReader/{current_build_config}",
-    f"{root_dir_native}/CesiumJsonWriter/{current_build_config}",
-    f"{root_dir_native}/CesiumGltf/{current_build_config}",
-    f"{root_dir_native}/CesiumUtility/{current_build_config}",
-    f"{root_dir_native}/CesiumGeospatial/{current_build_config}",
-    f"{root_dir_native}/Cesium3DTilesSelection/{current_build_config}",
-    f"{root_dir_native}/CesiumRasterOverlays/{current_build_config}",
-    f"{root_dir_native}/CesiumGeometry/{current_build_config}",
-    f"{root_dir_native}/Cesium3DTilesReader/{current_build_config}",
-    f"{root_dir_native}/CesiumGltfContent/{current_build_config}",
-    f"{root_dir_native}/CesiumQuantizedMeshTerrain/{current_build_config}",
-    f"{root_dir_native}/Cesium3DTilesContent/{current_build_config}",
+    f"{native_library_root}/CesiumGltfReader/{current_build_config}",
+    f"{native_library_root}/CesiumAsync/{current_build_config}",
+    f"{native_library_root}/CesiumJsonReader/{current_build_config}",
+    f"{native_library_root}/CesiumJsonWriter/{current_build_config}",
+    f"{native_library_root}/CesiumGltf/{current_build_config}",
+    f"{native_library_root}/CesiumUtility/{current_build_config}",
+    f"{native_library_root}/CesiumGeospatial/{current_build_config}",
+    f"{native_library_root}/Cesium3DTilesSelection/{current_build_config}",
+    f"{native_library_root}/CesiumRasterOverlays/{current_build_config}",
+    f"{native_library_root}/CesiumGeometry/{current_build_config}",
+    f"{native_library_root}/Cesium3DTilesReader/{current_build_config}",
+    f"{native_library_root}/CesiumGltfContent/{current_build_config}",
+    f"{native_library_root}/CesiumQuantizedMeshTerrain/{current_build_config}",
+    f"{native_library_root}/Cesium3DTilesContent/{current_build_config}",
     cesium_build_utils.get_root_dir_native() + "/libs/gsl",
     cesium_build_utils.get_root_dir_native() + "/libs/absl",
     cesium_build_utils.get_root_dir_native() + "/libs",
@@ -386,7 +393,13 @@ common_libpaths = [
 
 # Add litehtml path (macOS uses its own path added earlier, others use base path)
 if sys.platform != cesium_build_utils.PLATFORM_MACOS:
-    common_libpaths.append(cesium_build_utils.get_root_dir() + "/third_party/litehtml")
+    common_libpaths.append(os.environ.get(
+        "CESIUM_LITEHTML_LIBDIR",
+        cesium_build_utils.get_root_dir() + "/third_party/litehtml"
+    ))
+    gumbo_libdir = os.environ.get("CESIUM_GUMBO_LIBDIR", "")
+    if gumbo_libdir:
+        common_libpaths.append(gumbo_libdir)
 
 env.Append(
     LIBS=libraries,
