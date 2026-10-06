@@ -21,7 +21,12 @@ void GeoreferencedMesh::_ready() {
 
 void GeoreferencedMesh::apply_position_on_globe(const glm::dvec3& engineOrigin) {
 	glm::dvec3 globalPos = this->m_originalPosition - engineOrigin;
-	this->set_global_position(CesiumMathUtils::from_glm_vec3(globalPos));
+	const Vector3 relativePosition = CesiumMathUtils::from_glm_vec3(globalPos);
+	// A tileset may rotate the plugin's fixed ECEF engine frame into a local
+	// tangent frame. Tile geometry inherits that parent basis, so its origin must
+	// pass through the same transform. Setting the raw global position bypassed
+	// the parent and separated neighbouring tiles into horizontal steps.
+	this->set_global_position(this->m_tileset->get_global_transform().xform(relativePosition));
 }
 
 const glm::dvec3& GeoreferencedMesh::get_original_position() const {
@@ -87,4 +92,3 @@ void GeoreferencedMesh::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_georeference"), &GeoreferencedMesh::get_georeference);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "tileset", PropertyHint::PROPERTY_HINT_NODE_TYPE, "Cesium3DTileset"), "set_tileset", "get_tileset");
 }
-

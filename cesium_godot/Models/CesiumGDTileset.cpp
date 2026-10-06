@@ -363,7 +363,11 @@ void Cesium3DTileset::update_tileset(const Transform3D& cameraTransform)
 
 	glm::dvec3 camPos;
 	if (isGeoreferenced) {
-		camPos = this->m_georeference->get_ecef_position();
+		// XR supplies a complete local-tangent-to-ECEF transform, including its
+		// absolute ECEF origin and tracked locomotion offset.
+		camPos = cam->is_class("XRCamera3D")
+			? CesiumMathUtils::to_glm_dvec3(cameraTransform.origin)
+			: this->m_georeference->get_ecef_position();
 	}
 	else {
 		camPos = CesiumMathUtils::to_glm_dvec3(cameraTransform.origin);
@@ -372,6 +376,7 @@ void Cesium3DTileset::update_tileset(const Transform3D& cameraTransform)
 	Vector3 cameraDirectionGodot = cameraTransform.basis.get_column(Vector3::AXIS_Z);
 	Vector3 cameraUp = cameraTransform.basis.get_column(Vector3::AXIS_Y);
 	glm::dvec3 cameraDirection = glm::normalize(CesiumMathUtils::to_glm_dvec3(-cameraDirectionGodot));
+	const glm::dvec3 cameraUpCesium = glm::normalize(CesiumMathUtils::to_glm_dvec3(cameraUp));
 
 
 	Vector2 viewportSize;
@@ -384,20 +389,65 @@ void Cesium3DTileset::update_tileset(const Transform3D& cameraTransform)
 	Vector2 aspectRatioV = viewportSize;
 	real_t aspectRatioF = aspectRatioV.x / aspectRatioV.y;
 
-	double verticalFOV = Math::deg_to_rad(cam->get_fov());
+	// XRCamera3D uses asymmetric per-eye projections supplied by OpenXR. Asking
+	// it for a conventional desktop FOV can force an invalid symmetric frustum
+	// on runtimes such as Steam Frame. Tile selection only needs a conservative
+	// centre-eye estimate; Godot continues to use the real OpenXR projection for
+	// rendering both eyes.
+	const bool isXRCamera = cam->is_class("XRCamera3D");
+	double verticalFOV = Math::deg_to_rad(isXRCamera ? 110.0 : cam->get_fov());
 	double horizontalFOV = 2 * Math::atan(aspectRatioF * Math::tan(verticalFOV * 0.5));
-	Cesium3DTilesSelection::ViewState currentViewState = Cesium3DTilesSelection::ViewState(
+	Cesium3DTilesSelection::ViewState trackedViewState = Cesium3DTilesSelection::ViewState(
 		camPos,
 		cameraDirection,
-		CesiumMathUtils::to_glm_dvec3(cameraUp),
+		cameraUpCesium,
 		CesiumMathUtils::to_glm_vec2(viewportSize),
 		horizontalFOV,
 		verticalFOV
 	);
 
-	const Cesium3DTilesSelection::ViewUpdateResult& updateResult = this->m_activeTileset->updateViewGroup(this->m_activeTileset->getDefaultViewGroup(), { currentViewState });
-	this->m_activeTileset->loadTiles();
+	std::vector<Cesium3DTilesSelection::ViewState> viewStates { trackedViewState };
+	if (isGeoreferenced && isXRCamera) {
+		// The plugin's rendered ECEF frame and OpenXR tracking frame do not expose
+		// a dependable single forward-axis convention. Keep horizontal coverage
+		// around the headset so terrain cannot be evicted merely when the user
+		// looks toward it. Screen-space error still controls refinement per view.
+		const glm::dvec3 cameraRight = glm::normalize(glm::cross(cameraDirection, cameraUpCesium));
+		for (const glm::dvec3& coverageDirection : {
+			-cameraDirection,
+			cameraRight,
+			-cameraRight
+		}) {
+			viewStates.emplace_back(
+				camPos,
+				coverageDirection,
+				cameraUpCesium,
+				CesiumMathUtils::to_glm_vec2(viewportSize),
+				horizontalFOV,
+				verticalFOV
+			);
+		}
 
+		// Retain a fifth view directly beneath the flying user.
+		const glm::dvec3 nadirDirection = -glm::normalize(camPos);
+		glm::dvec3 referenceUp(0.0, 0.0, 1.0);
+		if (Math::abs(glm::dot(nadirDirection, referenceUp)) > 0.99) {
+			referenceUp = glm::dvec3(0.0, 1.0, 0.0);
+		}
+		const glm::dvec3 nadirRight = glm::normalize(glm::cross(nadirDirection, referenceUp));
+		const glm::dvec3 nadirUp = glm::normalize(glm::cross(nadirRight, nadirDirection));
+		viewStates.emplace_back(
+			camPos,
+			nadirDirection,
+			nadirUp,
+			CesiumMathUtils::to_glm_vec2(viewportSize),
+			horizontalFOV,
+			verticalFOV
+		);
+	}
+
+	const Cesium3DTilesSelection::ViewUpdateResult& updateResult = this->m_activeTileset->updateViewGroup(this->m_activeTileset->getDefaultViewGroup(), viewStates);
+	this->m_activeTileset->loadTiles();
 	for (CesiumUtility::IntrusivePointer<const Cesium3DTilesSelection::Tile> tile : updateResult.tilesToRenderThisFrame) {
 		this->render_tile_as_node(*tile);
 	}
@@ -815,4 +865,3 @@ void Cesium3DTileset::_enter_tree() {
 	this->set_rotation_degrees(Vector3(90.0, 0.0, 0.0));
 	this->set_owner(globe->get_parent_node_3d());
 }
-
