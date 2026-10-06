@@ -18,6 +18,7 @@ compile_commands.json
 
 # Ignore the Cesium native directory
 cesium_godot/native
+cesium_godot/third_party/litehtml-src/
 
 # Ignore the actual godotcpp module
 godot-cpp/
